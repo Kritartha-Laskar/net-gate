@@ -36,7 +36,7 @@ class AiQuestionPaperController extends Controller
             'title'           => 'nullable|string|max:191',
             'exam_year'       => 'nullable|integer|min:1995|max:2100',
             'difficulty'      => 'nullable|in:foundation,exam_level,hard',
-            'total_questions' => 'required|integer|min:1|max:150',
+            'total_questions' => 'required|integer|min:1|max:200',
             'custom_prompt'   => 'nullable|string|max:2000',
             'provider'        => 'nullable|in:gemini,openai',
         ]);
@@ -120,7 +120,8 @@ class AiQuestionPaperController extends Controller
         return response()->json([
             'success'   => true,
             'paper_id'  => $paper->id,
-            'paper_url' => route('admin.question-papers.show', $paper->id),
+            'paper_url' => route('admin.question-papers.show', $paper->id, false),
+            'batch_url' => route('admin.question-papers.ai.batch', ['questionPaper' => $paper->id], false),
             'title'     => $paper->title,
             'provider'  => $provider,
             'batches'   => $batches,
@@ -199,10 +200,9 @@ class AiQuestionPaperController extends Controller
                 'total_marks'     => $questionPaper->total_marks,
             ]);
         } catch (Throwable $e) {
-            // Remove empty paper shell if first batch failed cleanly
-            if ($questionPaper->questions()->count() === 0) {
-                $questionPaper->delete();
-            }
+            \Log::error('AI Paper Batch Generation Error: ' . $e->getMessage(), [
+                'paper_id' => $questionPaper->id,
+            ]);
 
             return response()->json([
                 'success' => false,

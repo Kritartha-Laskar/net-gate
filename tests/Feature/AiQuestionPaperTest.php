@@ -333,4 +333,33 @@ class AiQuestionPaperTest extends TestCase
             $this->assertEquals('GATE CSE', $row['course_name']);
         }
     }
+
+    public function test_ai_service_resiliently_decodes_latex_and_variant_json_payloads(): void
+    {
+        $svc = app(\App\Services\AiQuestionPaperService::class);
+        $reflector = new \ReflectionClass($svc);
+        $decode = $reflector->getMethod('decodeJsonPayload');
+        $decode->setAccessible(true);
+
+        // Case 1: unescaped LaTeX math formulas in question text
+        $latexJson = '{"questions": [{"question": "Find \( \alpha + \beta \) and \frac{1}{2} where \( \Theta(n^2) \)", "options": [{"answer": "A", "is_correct": true}]}]}';
+        $res = $decode->invoke($svc, $latexJson);
+        $this->assertIsArray($res);
+        $this->assertArrayHasKey('questions', $res);
+        $this->assertCount(1, $res['questions']);
+
+        // Case 2: raw list of question objects
+        $listJson = '[{"question": "What is Dijkstra algorithm?", "options": [{"answer": "Greedy", "is_correct": true}]}]';
+        $res2 = $decode->invoke($svc, $listJson);
+        $this->assertIsArray($res2);
+        $this->assertArrayHasKey('questions', $res2);
+        $this->assertCount(1, $res2['questions']);
+
+        // Case 3: nested under "paper" or "data"
+        $nestedJson = '{"paper": [{"question": "Cache hit ratio formula?", "options": [{"answer": "h * Tc", "is_correct": true}]}]}';
+        $res3 = $decode->invoke($svc, $nestedJson);
+        $this->assertIsArray($res3);
+        $this->assertArrayHasKey('questions', $res3);
+        $this->assertCount(1, $res3['questions']);
+    }
 }

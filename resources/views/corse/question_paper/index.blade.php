@@ -705,12 +705,17 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-4">
-                                <label class="fw-semibold" for="ai_total_questions">Number of Questions</label>
-                                <input type="number" id="ai_total_questions" class="form-control" min="1" max="150" value="20">
-                                <small class="text-muted">GATE full = 65 | NET Paper 2 = 100</small>
+                            <div class="col-md-5">
+                                <label class="fw-semibold d-flex justify-content-between align-items-center mb-1" for="ai_total_questions">
+                                    <span>Number of Questions <span class="text-danger">*</span></span>
+                                    <span id="ai_q_pattern_badge" class="badge bg-primary text-white" style="font-size: 11px;">GATE: 65 Qs (100 Marks)</span>
+                                </label>
+                                <input type="number" id="ai_total_questions" class="form-control" min="1" max="200" value="65" oninput="updateAiQuestionBadge()">
+                                <div class="d-flex flex-wrap gap-1 mt-1" id="ai_preset_pills">
+                                    <!-- Dynamic 1-click pills inserted by JS -->
+                                </div>
                             </div>
-                            <div class="col-md-8">
+                            <div class="col-md-7">
                                 <label class="fw-semibold" for="ai_title">Paper Title <small class="text-muted">(Optional - auto-named if empty)</small></label>
                                 <input type="text" id="ai_title" class="form-control" placeholder="e.g. GATE CSE 2026 Exam-Level Mock Test #1">
                             </div>
@@ -814,20 +819,86 @@
 <script>
 const AI_EXAM_PRESETS = @json($examPresets);
 
+function setAiQuestionCount(n) {
+    const input = document.getElementById('ai_total_questions');
+    if (input) {
+        input.value = n;
+        updateAiQuestionBadge();
+    }
+}
+
+function updateAiQuestionBadge() {
+    const examKey = document.getElementById('ai_exam_key').value;
+    const paperType = document.getElementById('ai_paper_type').value;
+    const qCount = parseInt(document.getElementById('ai_total_questions').value || '0', 10);
+    const badge = document.getElementById('ai_q_pattern_badge');
+    if (!badge) return;
+
+    if (paperType === 'mocktest') {
+        const marks = qCount * 2;
+        badge.className = 'badge bg-success text-white';
+        badge.textContent = `Subject Mock: ${qCount} Qs (~${marks} Marks)`;
+    } else if (examKey === 'net_cse') {
+        badge.className = qCount === 150 ? 'badge bg-success text-white' : 'badge bg-purple text-white';
+        badge.textContent = qCount === 150 ? 'Official NET Pattern: 150 Qs (300 Marks)' : `UGC NET: ${qCount} Qs (${qCount * 2} Marks)`;
+    } else {
+        badge.className = qCount === 65 ? 'badge bg-success text-white' : 'badge bg-primary text-white';
+        badge.textContent = qCount === 65 ? 'Official GATE Pattern: 65 Qs (100 Marks)' : `GATE CSE: ${qCount} Qs`;
+    }
+}
+
 function syncAiExamSubjects() {
     const examKey = document.getElementById('ai_exam_key').value;
+    const paperType = document.getElementById('ai_paper_type').value;
     const preset = AI_EXAM_PRESETS[examKey] || {};
     const subjectSelect = document.getElementById('ai_subject_name');
-    if (!subjectSelect) return;
+    const pillsWrap = document.getElementById('ai_preset_pills');
+    const qInput = document.getElementById('ai_total_questions');
 
-    subjectSelect.innerHTML = '';
-    const subjects = Object.keys(preset.subjects || {});
-    subjects.forEach(name => {
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        subjectSelect.appendChild(opt);
-    });
+    if (subjectSelect) {
+        subjectSelect.innerHTML = '';
+        const subjects = Object.keys(preset.subjects || {});
+        subjects.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            subjectSelect.appendChild(opt);
+        });
+    }
+
+    if (paperType === 'combined') {
+        if (examKey === 'net_cse') {
+            qInput.value = 150;
+            if (pillsWrap) {
+                pillsWrap.innerHTML = `
+                    <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(150)">Full Exam (150 Qs)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(100)">Paper 2 CS (100 Qs)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(50)">Paper 1 (50 Qs)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(30)">30 Qs</button>
+                `;
+            }
+        } else {
+            qInput.value = 65;
+            if (pillsWrap) {
+                pillsWrap.innerHTML = `
+                    <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(65)">Full Exam (65 Qs)</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(30)">30 Qs</button>
+                    <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(15)">15 Qs</button>
+                `;
+            }
+        }
+    } else {
+        qInput.value = 25;
+        if (pillsWrap) {
+            pillsWrap.innerHTML = `
+                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(25)">25 Qs</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(15)">15 Qs</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2" style="font-size:11px;" onclick="setAiQuestionCount(10)">10 Qs</button>
+            `;
+        }
+    }
+
+    updateAiQuestionBadge();
 }
 
 function toggleAiPaperTypeFields() {
@@ -835,7 +906,12 @@ function toggleAiPaperTypeFields() {
     const showSubject = type === 'mocktest';
     document.getElementById('ai_subject_wrap').style.display = showSubject ? 'block' : 'none';
     document.getElementById('ai_chapter_wrap').style.display = showSubject ? 'block' : 'none';
+    syncAiExamSubjects();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    syncAiExamSubjects();
+});
 
 function toggleAiModeFields() {
     const mode = document.getElementById('ai_mode').value;
@@ -896,20 +972,38 @@ async function startAiGeneration() {
     progPct.textContent = '5%';
     progStatus.textContent = 'Creating question paper blueprint...';
 
-    const csrfToken = '{{ csrf_token() }}';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                   || document.querySelector('input[name="_token"]')?.value
+                   || '{{ csrf_token() }}';
 
     try {
-        const initRes = await fetch('{{ route("admin.question-papers.ai.init") }}', {
+        const initUrl = '{{ route("admin.question-papers.ai.init", [], false) }}';
+        const initRes = await fetch(initUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': csrfToken,
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(Object.assign({}, payload, { _token: csrfToken })),
         });
 
-        const initData = await initRes.json();
+        const initText = await initRes.text();
+        let initData;
+        try {
+            initData = JSON.parse(initText);
+        } catch (pe) {
+            console.error('Non-JSON server response on init:', initText);
+            if (initRes.status === 419) {
+                throw new Error('Your session expired (CSRF error). Please refresh the page (F5) and try again.');
+            }
+            if (initRes.status === 401 || initRes.status === 403 || initText.includes('login')) {
+                throw new Error('Your session timed out. Please refresh the page and log in again.');
+            }
+            throw new Error(`Server returned HTML error (${initRes.status}). Please refresh the page (F5) and try again.`);
+        }
+
         if (!initRes.ok || !initData.success) {
             throw new Error(initData.message || 'Failed to initialize AI paper.');
         }
@@ -925,32 +1019,74 @@ async function startAiGeneration() {
             progPct.textContent = pct + '%';
             progStatus.textContent = `Generating ${batch.subject_name} (${batch.count} questions) — batch ${i + 1} of ${totalBatches}...`;
 
-            const batchUrl = '{{ url("admin/question-papers") }}/' + initData.paper_id + '/ai/batch';
-            const batchRes = await fetch(batchUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-                body: JSON.stringify({
-                    exam_key: payload.exam_key,
-                    subject_name: batch.subject_name,
-                    chapter_name: payload.chapter_name,
-                    count: batch.count,
-                    difficulty: payload.difficulty,
-                    mode: payload.mode,
-                    exam_year: payload.exam_year,
-                    custom_prompt: payload.custom_prompt,
-                    provider: payload.provider,
-                }),
-            });
+            const batchUrl = initData.batch_url || ('{{ route("admin.question-papers.index", [], false) }}/' + initData.paper_id + '/ai/batch');
+            let batchSuccess = false;
+            let lastBatchError = '';
 
-            const batchData = await batchRes.json();
-            if (!batchRes.ok || !batchData.success) {
-                throw new Error(batchData.message || `Failed generating ${batch.subject_name} batch.`);
+            // Retry individual batch up to 2 times automatically
+            for (let retry = 0; retry < 2; retry++) {
+                try {
+                    const batchRes = await fetch(batchUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            _token: csrfToken,
+                            exam_key: payload.exam_key,
+                            subject_name: batch.subject_name,
+                            chapter_name: payload.chapter_name,
+                            count: batch.count,
+                            difficulty: payload.difficulty,
+                            mode: payload.mode,
+                            exam_year: payload.exam_year,
+                            custom_prompt: payload.custom_prompt,
+                            provider: payload.provider,
+                        }),
+                    });
+
+                    const batchText = await batchRes.text();
+                    let batchData = null;
+                    try {
+                        batchData = JSON.parse(batchText);
+                    } catch (pe) {
+                        console.error('Non-JSON batch response:', batchText);
+                        if (batchRes.status === 419) {
+                            throw new Error('Session expired (CSRF). Please refresh the page (F5).');
+                        }
+                    }
+
+                    if (batchRes.ok && batchData && batchData.success) {
+                        generatedTotal = batchData.total_questions || (generatedTotal + batch.count);
+                        batchSuccess = true;
+                        break;
+                    } else {
+                        lastBatchError = (batchData && batchData.message) ? batchData.message : `HTTP ${batchRes.status}`;
+                    }
+                } catch (e) {
+                    lastBatchError = e.message;
+                }
+
+                if (retry === 0) {
+                    progStatus.textContent = `Retrying ${batch.subject_name}... (attempt 2)`;
+                    await new Promise(r => setTimeout(r, 1200));
+                }
             }
-            generatedTotal = batchData.total_questions || (generatedTotal + batch.count);
+
+            if (!batchSuccess) {
+                // If previous batches already saved questions, don't crash the entire paper
+                if (generatedTotal > 0) {
+                    progBar.style.width = '100%';
+                    progPct.textContent = '100%';
+                    progStatus.textContent = `Generated ${generatedTotal} questions! Opening paper...`;
+                    window.location.href = initData.paper_url;
+                    return;
+                }
+                throw new Error(lastBatchError || `Failed generating ${batch.subject_name} batch.`);
+            }
         }
 
         progBar.style.width = '100%';

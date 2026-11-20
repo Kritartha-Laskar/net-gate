@@ -216,8 +216,14 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <span class="text-success fw-bold">+{{ $question->pivot->marks }}</span>
-                                        <span class="text-danger small"> / −1</span>
+                                        <span class="text-success fw-bold">+{{ $question->pivot->marks ?? 2 }}</span>
+                                        @if($isNetCse || in_array($question->question_type, ['msq', 'descripted'], true))
+                                            <span class="text-muted small"> / 0</span>
+                                        @elseif(($question->pivot->marks ?? 2) == 1)
+                                            <span class="text-danger small"> / −0.33</span>
+                                        @else
+                                            <span class="text-danger small"> / −0.66</span>
+                                        @endif
                                     </td>
                                     <td>
                                         @if($question->answers->isNotEmpty())

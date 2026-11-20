@@ -15,7 +15,7 @@ return [
         'gemini' => [
             'label'    => 'Google Gemini',
             'api_key'  => env('GEMINI_API_KEY'),
-            'model'    => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+            'model'    => env('GEMINI_MODEL', 'gemini-3.5-flash-lite'),
             'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
         ],
         'openai' => [
@@ -39,54 +39,54 @@ return [
             'default_questions'  => 65,
             'default_marks'      => 100,
             'default_q_marks'    => 2,
-            'marking_note'       => '1-mark & 2-mark MCQ/MSQ/NAT (negative marking -1/3 or -2/3 for MCQs)',
+            'marking_note'       => '65 questions (10 Aptitude + 55 CS/Math), 100 marks, -1/3 or -2/3 for wrong MCQs',
             'subjects'           => [
                 'General Aptitude' => [
-                    'weight'   => 15,
+                    'weight'   => 10,
                     'chapters' => ['Verbal Aptitude', 'Quantitative Aptitude', 'Analytical & Spatial Aptitude'],
                 ],
                 'Engineering Mathematics' => [
-                    'weight'   => 13,
+                    'weight'   => 7,
                     'chapters' => ['Linear Algebra', 'Calculus', 'Probability and Statistics'],
                 ],
                 'Discrete Mathematics' => [
-                    'weight'   => 10,
+                    'weight'   => 6,
                     'chapters' => ['Propositional & First-Order Logic', 'Sets, Relations & Functions', 'Graph Theory & Combinatorics'],
                 ],
                 'Digital Logic' => [
-                    'weight'   => 5,
+                    'weight'   => 3,
                     'chapters' => ['Boolean Algebra & Minimization', 'Combinational & Sequential Circuits', 'Number Representations'],
                 ],
                 'Computer Organization and Architecture' => [
-                    'weight'   => 8,
+                    'weight'   => 5,
                     'chapters' => ['Instructions, Addressing & ALU', 'Instruction Pipelining', 'Memory Hierarchy & Cache'],
                 ],
                 'Programming and Data Structures' => [
-                    'weight'   => 10,
+                    'weight'   => 6,
                     'chapters' => ['C Programming & Recursion', 'Stacks, Queues & Linked Lists', 'Trees, BST & Heaps'],
                 ],
                 'Algorithms' => [
-                    'weight'   => 10,
+                    'weight'   => 6,
                     'chapters' => ['Asymptotic Analysis & Recurrences', 'Greedy & Dynamic Programming', 'Graph Algorithms & Shortest Paths'],
                 ],
                 'Theory of Computation' => [
-                    'weight'   => 8,
+                    'weight'   => 5,
                     'chapters' => ['Regular Languages & Finite Automata', 'Context-Free Grammars & PDA', 'Turing Machines & Undecidability'],
                 ],
                 'Compiler Design' => [
-                    'weight'   => 4,
+                    'weight'   => 3,
                     'chapters' => ['Lexical Analysis & Parsing (LL/LR)', 'Syntax-Directed Translation', 'Code Generation & Optimization'],
                 ],
                 'Operating System' => [
-                    'weight'   => 9,
+                    'weight'   => 6,
                     'chapters' => ['Processes, Threads & CPU Scheduling', 'Synchronization & Deadlocks', 'Virtual Memory & File Systems'],
                 ],
                 'Databases' => [
-                    'weight'   => 9,
+                    'weight'   => 4,
                     'chapters' => ['ER Model, Relational Algebra & SQL', 'Normalization & Functional Dependencies', 'Transactions, Concurrency & B+ Trees'],
                 ],
                 'Computer Networks' => [
-                    'weight'   => 9,
+                    'weight'   => 4,
                     'chapters' => ['Data Link Layer & MAC', 'IPv4 Addressing, Subnetting & Routing', 'TCP/UDP, Congestion Control & Application Layer'],
                 ],
             ],
@@ -96,25 +96,25 @@ return [
             'course_name'        => 'UGC NET CSE',
             'exam_name'          => 'UGC NET CSE',
             'duration_minutes'   => 180,
-            'default_questions'  => 100,
-            'default_marks'      => 200,
+            'default_questions'  => 150,
+            'default_marks'      => 300,
             'default_q_marks'    => 2,
-            'marking_note'       => '2 marks per question, no negative marking (Paper 1 & Paper 2 CSE)',
+            'marking_note'       => '150 questions (50 Paper 1 + 100 Paper 2 CS), 300 marks, no negative marking',
             'subjects'           => [
                 'Teaching & Research Aptitude (Paper 1)' => [
-                    'weight'   => 15,
+                    'weight'   => 50,
                     'chapters' => ['Teaching & Research Aptitude', 'Logical & Mathematical Reasoning', 'ICT & Higher Education System'],
                 ],
                 'Discrete Structures & Optimization' => [
-                    'weight'   => 9,
+                    'weight'   => 10,
                     'chapters' => ['Mathematical Logic & Sets', 'Graph Theory & Boolean Algebra', 'Linear Programming & Optimization'],
                 ],
                 'Computer System Architecture' => [
-                    'weight'   => 8,
+                    'weight'   => 10,
                     'chapters' => ['Digital Logic & Microoperations', 'Pipelining & Vector Processing', 'Memory & I/O Organization'],
                 ],
                 'Programming Languages & Computer Graphics' => [
-                    'weight'   => 8,
+                    'weight'   => 10,
                     'chapters' => ['C/C++/OOP & Web Technologies', '2D/3D Transformations & Viewing', 'Clipping & Shading Algorithms'],
                 ],
                 'Database Management Systems' => [
@@ -126,7 +126,7 @@ return [
                     'chapters' => ['CPU Scheduling & Deadlocks', 'Memory & Disk Management', 'Assemblers, Linkers & Compilers'],
                 ],
                 'Software Engineering' => [
-                    'weight'   => 9,
+                    'weight'   => 10,
                     'chapters' => ['SDLC Models & Agile', 'Software Testing & Metrics', 'COCOMO, Risk & Quality Management'],
                 ],
                 'Data Structures & Algorithms' => [
@@ -134,15 +134,15 @@ return [
                     'chapters' => ['Trees, Graphs & Hashing', 'Sorting, Searching & Greedy', 'Dynamic Programming & NP-Completeness'],
                 ],
                 'Theory of Computation & Compilers' => [
-                    'weight'   => 7,
+                    'weight'   => 10,
                     'chapters' => ['Automata & Regular Languages', 'CFG, Chomsky Hierarchy & Decidability', 'Parsing & Syntax-Directed Translation'],
                 ],
                 'Data Communication & Computer Networks' => [
-                    'weight'   => 8,
+                    'weight'   => 10,
                     'chapters' => ['OSI/TCP-IP & Modulation', 'MAC, IP Subnetting & Routing', 'Transport Protocols & Network Security'],
                 ],
                 'Artificial Intelligence' => [
-                    'weight'   => 6,
+                    'weight'   => 10,
                     'chapters' => ['Search Strategies (A*, Minimax)', 'Knowledge Representation & Fuzzy Logic', 'Machine Learning, NLP & Neural Networks'],
                 ],
             ],

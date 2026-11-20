@@ -15,7 +15,7 @@ use RuntimeException;
 
 class AiQuestionPaperService
 {
-    private const MAX_BATCH_SIZE = 12;
+    private const MAX_BATCH_SIZE = 5;
 
     /**
      * Resolve active provider name ("gemini" or "openai").
@@ -406,9 +406,10 @@ PROMPT;
         return "You are an expert Computer Science professor creating exam-level {$examName} questions. "
             . "{$styleGuide} "
             . "Always wrap mathematical formulas in \\( ... \\) LaTeX delimiters. "
+            . "Inside JSON string values, always escape LaTeX backslashes as double backslashes (e.g. \\\\( ... \\\\) and \\\\alpha). "
             . "Every MCQ must have 4 options with exactly 1 option marked \"is_correct\": true. "
             . "Every MSQ must have 4 options with 1 to 3 options marked \"is_correct\": true. "
-            . "Return strictly valid JSON with no markdown fences.";
+            . "Return strictly valid JSON with root object having the \"questions\" array and no markdown fences.";
     }
 
     private function buildBatchUserPrompt(
@@ -489,55 +490,105 @@ PROMPT;
             );
         }
 
-        $rawContent = $provider === 'openai'
-            ? $this->callOpenAi($cfg, $systemPrompt, $userPrompt)
-            : $this->callGemini($cfg, $systemPrompt, $userPrompt, $pdfBase64);
+        $lastException = null;
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                $rawContent = $provider === 'openai'
+                    ? $this->callOpenAi($cfg, $systemPrompt, $userPrompt)
+                    : $this->callGemini($cfg, $systemPrompt, $userPrompt, $pdfBase64);
 
-        $decoded = $this->decodeJsonPayload($rawContent);
-        if (!is_array($decoded) || !isset($decoded['questions']) || !is_array($decoded['questions'])) {
-            throw new RuntimeException('AI returned an unexpected format (missing "questions" array). Please retry.');
+                $decoded = $this->decodeJsonPayload($rawContent);
+                if (is_array($decoded) && isset($decoded['questions']) && is_array($decoded['questions']) && !empty($decoded['questions'])) {
+                    return $decoded;
+                }
+
+                \Illuminate\Support\Facades\Log::warning("AI returned unparseable questions payload (attempt {$attempt}): " . substr($rawContent, 0, 500));
+            } catch (\Throwable $e) {
+                $lastException = $e;
+                \Illuminate\Support\Facades\Log::warning("AI provider call failed (attempt {$attempt}): " . $e->getMessage());
+            }
+
+            if ($attempt < 2) {
+                usleep(500000); // 500ms delay before retry
+            }
         }
 
-        return $decoded;
+        if ($lastException) {
+            throw $lastException;
+        }
+
+        throw new RuntimeException('AI returned an unexpected format (missing "questions" array). Please retry.');
     }
 
     private function callGemini(array $cfg, string $systemPrompt, string $userPrompt, ?string $pdfBase64): string
     {
         $baseUrl = rtrim((string) $cfg['base_url'], '/');
-        $model = $cfg['model'] ?: 'gemini-2.5-flash';
-        $url = "{$baseUrl}/models/{$model}:generateContent?key={$cfg['api_key']}";
+        $primaryModel = $cfg['model'] ?: 'gemini-3.5-flash-lite';
 
-        $parts = [['text' => $userPrompt]];
-        if ($pdfBase64 !== null) {
-            $parts[] = [
-                'inline_data' => [
-                    'mime_type' => 'application/pdf',
-                    'data'      => $pdfBase64,
-                ],
-            ];
-        }
+        // Candidate fallback models if primary model hits 429 daily free quota limit or 503 load spike
+        $models = array_unique([
+            $primaryModel,
+            'gemini-3.5-flash-lite',
+            'gemini-3-flash-preview',
+            'gemini-3.1-flash-lite',
+            'gemini-flash-latest',
+        ]);
 
-        $response = Http::timeout((int) config('ai.timeout', 120))
-            ->acceptJson()
-            ->post($url, [
-                'system_instruction' => [
-                    'parts' => [['text' => $systemPrompt]],
-                ],
-                'contents' => [
-                    ['role' => 'user', 'parts' => $parts],
-                ],
-                'generationConfig' => [
-                    'responseMimeType' => 'application/json',
-                    'temperature'      => 0.4,
-                ],
-            ]);
+        $lastError = '';
+        foreach ($models as $model) {
+            $url = "{$baseUrl}/models/{$model}:generateContent?key={$cfg['api_key']}";
 
-        if ($response->failed()) {
+            $parts = [['text' => $userPrompt]];
+            if ($pdfBase64 !== null) {
+                $parts[] = [
+                    'inline_data' => [
+                        'mime_type' => 'application/pdf',
+                        'data'      => $pdfBase64,
+                    ],
+                ];
+            }
+
+            $response = Http::timeout((int) config('ai.timeout', 120))
+                ->acceptJson()
+                ->post($url, [
+                    'system_instruction' => [
+                        'parts' => [['text' => $systemPrompt]],
+                    ],
+                    'contents' => [
+                        ['role' => 'user', 'parts' => $parts],
+                    ],
+                    'generationConfig' => [
+                        'responseMimeType' => 'application/json',
+                        'temperature'      => 0.4,
+                        'maxOutputTokens'  => 8192,
+                    ],
+                ]);
+
+            if ($response->successful()) {
+                $candidateParts = $response->json('candidates.0.content.parts', []);
+                $fullText = '';
+                foreach ($candidateParts as $p) {
+                    $fullText .= (string) ($p['text'] ?? '');
+                }
+                if ($fullText !== '') {
+                    return $fullText;
+                }
+            }
+
+            $status = $response->status();
             $msg = $response->json('error.message') ?? $response->body();
-            throw new RuntimeException("Gemini API error ({$response->status()}): {$msg}");
+            $lastError = "Gemini API error ({$status}) on {$model}: {$msg}";
+
+            // If it's a 429 (quota exceeded), 503 (model overloaded), or 404 (model deprecated), try next model in pool
+            if (in_array($status, [404, 429, 500, 503], true)) {
+                \Illuminate\Support\Facades\Log::warning("Gemini model {$model} returned {$status}, attempting fallback to next model...");
+                continue;
+            }
+
+            throw new RuntimeException($lastError);
         }
 
-        return (string) ($response->json('candidates.0.content.parts.0.text') ?? '');
+        throw new RuntimeException($lastError);
     }
 
     private function callOpenAi(array $cfg, string $systemPrompt, string $userPrompt): string
@@ -569,26 +620,108 @@ PROMPT;
     private function decodeJsonPayload(string $text): ?array
     {
         $trimmed = trim($text);
-        if (str_starts_with($trimmed, '```')) {
-            $trimmed = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $trimmed) ?? $trimmed;
+        if (preg_match('/```(?:json)?\s*([\s\S]*?)\s*```/i', $trimmed, $m)) {
+            $trimmed = trim($m[1]);
         }
 
+        // Attempt 1: Direct JSON parse
         $decoded = json_decode($trimmed, true);
         if (is_array($decoded)) {
-            return $decoded;
+            return $this->formatDecodedQuestions($decoded);
         }
 
-        $firstBrace = strpos($trimmed, '{');
-        $lastBrace = strrpos($trimmed, '}');
-        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
-            $slice = substr($trimmed, $firstBrace, $lastBrace - $firstBrace + 1);
+        // Attempt 2: Extract {...} or [...] slice
+        $slice = $this->extractJsonSlice($trimmed);
+        if ($slice !== null) {
             $decoded = json_decode($slice, true);
             if (is_array($decoded)) {
-                return $decoded;
+                return $this->formatDecodedQuestions($decoded);
+            }
+        }
+
+        // Attempt 3: Fix unescaped LaTeX backslashes (\alpha, \frac, \(, etc.) and retry
+        $sanitized = $this->fixJsonLatexEscapes($slice ?? $trimmed);
+        $decoded = json_decode($sanitized, true);
+        if (is_array($decoded)) {
+            return $this->formatDecodedQuestions($decoded);
+        }
+
+        // Attempt 4: Clean control characters inside string literals and retry
+        $noControls = preg_replace('/[\x00-\x1f\x7f]/', ' ', $sanitized);
+        $decoded = json_decode($noControls, true);
+        if (is_array($decoded)) {
+            return $this->formatDecodedQuestions($decoded);
+        }
+
+        // Attempt 5: Auto-repair cut-off or unclosed arrays/objects
+        $openBraces = substr_count($sanitized, '{') - substr_count($sanitized, '}');
+        $openBrackets = substr_count($sanitized, '[') - substr_count($sanitized, ']');
+        if ($openBraces > 0 || $openBrackets > 0) {
+            $repaired = $sanitized . str_repeat('}', max(0, $openBraces)) . str_repeat(']', max(0, $openBrackets));
+            $decoded = json_decode($repaired, true);
+            if (is_array($decoded)) {
+                return $this->formatDecodedQuestions($decoded);
             }
         }
 
         return null;
+    }
+
+    private function extractJsonSlice(string $text): ?string
+    {
+        $firstBrace = strpos($text, '{');
+        $lastBrace = strrpos($text, '}');
+        if ($firstBrace !== false && $lastBrace !== false && $lastBrace > $firstBrace) {
+            return substr($text, $firstBrace, $lastBrace - $firstBrace + 1);
+        }
+
+        $firstBracket = strpos($text, '[');
+        $lastBracket = strrpos($text, ']');
+        if ($firstBracket !== false && $lastBracket !== false && $lastBracket > $firstBracket) {
+            return substr($text, $firstBracket, $lastBracket - $firstBracket + 1);
+        }
+
+        return null;
+    }
+
+    private function fixJsonLatexEscapes(string $json): string
+    {
+        return preg_replace_callback('/\\\\(?:(")|(\\\\)|(\/)|(u[0-9a-fA-F]{4})|([nrt])(?![a-zA-Z])|(.))/s', function ($m) {
+            if (!empty($m[1])) return '\"';
+            if (!empty($m[2])) return '\\\\';
+            if (!empty($m[3])) return '\/';
+            if (!empty($m[4])) return '\\' . $m[4];
+            if (!empty($m[5])) return '\\' . $m[5];
+
+            $char = $m[6] ?? '';
+            return '\\\\' . $char;
+        }, $json);
+    }
+
+    private function formatDecodedQuestions(array $data): array
+    {
+        if (isset($data['questions']) && is_array($data['questions'])) {
+            return $data;
+        }
+
+        // If top-level array is a list of question objects
+        if (isset($data[0]) && is_array($data[0])) {
+            return ['questions' => $data];
+        }
+
+        // Search any top-level key that holds a list of questions (e.g. "paper", "data", "exam", "mocktest")
+        foreach ($data as $val) {
+            if (is_array($val) && isset($val[0]) && is_array($val[0]) && (isset($val[0]['question']) || isset($val[0]['options']))) {
+                return ['questions' => $val];
+            }
+        }
+
+        // If a single question object was returned: {"question": "...", "options": [...]}
+        if (isset($data['question']) && isset($data['options'])) {
+            return ['questions' => [$data]];
+        }
+
+        return $data;
     }
 
     private function normalizeQuestions(array $rawQuestions, string $fallbackSubject, int $defaultMarks): array
