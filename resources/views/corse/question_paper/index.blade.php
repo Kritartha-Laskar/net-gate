@@ -976,8 +976,11 @@ async function startAiGeneration() {
                    || document.querySelector('input[name="_token"]')?.value
                    || '{{ csrf_token() }}';
 
+    // Base path derived from current page URL ensures requests stay inside this exact project/subfolder
+    const currentBase = window.location.pathname.replace(/\/+$/, '');
+
     try {
-        const initUrl = '{{ route("admin.question-papers.ai.init", [], false) }}';
+        const initUrl = currentBase + '/ai/init';
         const initRes = await fetch(initUrl, {
             method: 'POST',
             headers: {
@@ -1037,7 +1040,8 @@ async function startAiGeneration() {
             progPct.textContent = pct + '%';
             progStatus.textContent = `Generating ${batch.subject_name} (${batch.count} questions) — batch ${i + 1} of ${totalBatches}...`;
 
-            const batchUrl = initData.batch_url || ('{{ route("admin.question-papers.index", [], false) }}/' + initData.paper_id + '/ai/batch');
+            const targetPaperUrl = currentBase + '/' + initData.paper_id;
+            const batchUrl = currentBase + '/' + initData.paper_id + '/ai/batch';
             let batchSuccess = false;
             let lastBatchError = '';
 
@@ -1100,7 +1104,7 @@ async function startAiGeneration() {
                     progBar.style.width = '100%';
                     progPct.textContent = '100%';
                     progStatus.textContent = `Generated ${generatedTotal} questions! Opening paper...`;
-                    window.location.href = initData.paper_url;
+                    window.location.href = targetPaperUrl;
                     return;
                 }
                 throw new Error(lastBatchError || `Failed generating ${batch.subject_name} batch.`);
@@ -1113,7 +1117,7 @@ async function startAiGeneration() {
         progPct.textContent = '100%';
         progStatus.textContent = `Completed! ${generatedTotal} questions saved. Opening paper...`;
 
-        window.location.href = initData.paper_url;
+        window.location.href = targetPaperUrl;
     } catch (err) {
         progBox.style.display = 'none';
         errBox.textContent = err.message || 'An unexpected error occurred during AI generation.';
