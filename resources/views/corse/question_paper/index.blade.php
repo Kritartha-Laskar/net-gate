@@ -1029,6 +1029,7 @@ async function startAiGeneration() {
             throw new Error(initData.message || 'Failed to initialize AI paper.');
         }
 
+        const targetPaperUrl = currentBase + '/' + initData.paper_id;
         const batches = initData.batches || [];
         const totalBatches = Math.max(1, batches.length);
         let generatedTotal = 0;
@@ -1040,7 +1041,6 @@ async function startAiGeneration() {
             progPct.textContent = pct + '%';
             progStatus.textContent = `Generating ${batch.subject_name} (${batch.count} questions) — batch ${i + 1} of ${totalBatches}...`;
 
-            const targetPaperUrl = currentBase + '/' + initData.paper_id;
             const batchUrl = currentBase + '/' + initData.paper_id + '/ai/batch';
             let batchSuccess = false;
             let lastBatchError = '';
