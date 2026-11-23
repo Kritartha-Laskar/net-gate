@@ -1001,10 +1001,25 @@ async function startAiGeneration() {
             if (initRes.status === 401 || initRes.status === 403 || initText.includes('login')) {
                 throw new Error('Your session timed out. Please refresh the page and log in again.');
             }
-            if (initRes.status === 503) {
-                throw new Error('Server returned 503 (Service Temporarily Unavailable). Your Laravel app may be in maintenance mode (run "php artisan up" on the server) or the server process is temporarily busy. Please wait a moment and refresh.');
+
+            // Extract readable text from server's HTML error page
+            let serverSnippet = '';
+            const descM = initText.match(/<p[^>]*class=["'][^"']*(?:description|message|notice)[^"']*["'][^>]*>([\s\S]*?)<\/p>/i);
+            const h1M = initText.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+            const titleM = initText.match(/<title>([\s\S]*?)<\/title>/i);
+            if (descM && descM[1]) {
+                serverSnippet = descM[1].replace(/<[^>]*>/g, '').trim();
+            } else if (h1M && h1M[1]) {
+                serverSnippet = h1M[1].replace(/<[^>]*>/g, '').trim();
+            } else if (titleM && titleM[1]) {
+                serverSnippet = titleM[1].replace(/<[^>]*>/g, '').trim();
             }
-            throw new Error(`Server returned HTML error (${initRes.status}). Please refresh the page (F5) and try again.`);
+
+            if (initRes.status === 503) {
+                const hint = serverSnippet ? ` (${serverSnippet})` : '';
+                throw new Error(`Server returned 503 Service Unavailable${hint}. Check if your app is in maintenance mode ("php artisan up" on server) or if server resources/LiteSpeed limits are busy.`);
+            }
+            throw new Error(`Server returned error (${initRes.status}${serverSnippet ? ': ' + serverSnippet : ''}). Please check server logs or refresh.`);
         }
 
         if (!initRes.ok || !initData.success) {
