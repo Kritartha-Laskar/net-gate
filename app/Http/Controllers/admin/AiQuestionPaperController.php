@@ -27,105 +27,116 @@ class AiQuestionPaperController extends Controller
      */
     public function init(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'mode'            => 'required|in:mocktest_ai,pyq_ai',
-            'exam_key'        => 'required|in:gate_cse,net_cse',
-            'paper_type'      => 'required|in:combined,mocktest',
-            'subject_name'    => 'nullable|string|max:191',
-            'chapter_name'    => 'nullable|string|max:191',
-            'title'           => 'nullable|string|max:191',
-            'exam_year'       => 'nullable|integer|min:1995|max:2100',
-            'difficulty'      => 'nullable|in:foundation,exam_level,hard',
-            'total_questions' => 'required|integer|min:1|max:200',
-            'custom_prompt'   => 'nullable|string|max:2000',
-            'provider'        => 'nullable|in:gemini,openai',
-        ]);
+        try {
+            $validated = $request->validate([
+                'mode'            => 'required|in:mocktest_ai,pyq_ai',
+                'exam_key'        => 'required|in:gate_cse,net_cse',
+                'paper_type'      => 'required|in:combined,mocktest',
+                'subject_name'    => 'nullable|string|max:191',
+                'chapter_name'    => 'nullable|string|max:191',
+                'title'           => 'nullable|string|max:191',
+                'exam_year'       => 'nullable|integer|min:1995|max:2100',
+                'difficulty'      => 'nullable|in:foundation,exam_level,hard',
+                'total_questions' => 'required|integer|min:1|max:200',
+                'custom_prompt'   => 'nullable|string|max:2000',
+                'provider'        => 'nullable|in:gemini,openai',
+            ]);
 
-        $provider = $this->aiService->activeProvider($validated['provider'] ?? null);
-        $status = $this->aiService->providerStatus($provider);
+            $provider = $this->aiService->activeProvider($validated['provider'] ?? null);
+            $status = $this->aiService->providerStatus($provider);
 
-        if (!$status['configured']) {
-            $envKey = $provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
+            if (!$status['configured']) {
+                $envKey = $provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
+                return response()->json([
+                    'success' => false,
+                    'message' => "AI provider \"{$status['providers'][$provider]['label']}\" is not configured yet. Add {$envKey} to your .env file.",
+                ], 422);
+            }
+
+            $examKey = $validated['exam_key'];
+            $preset = config("ai.exams.{$examKey}");
+            $course = $this->aiService->ensureExamStructure($examKey);
+
+            $paperType = $validated['paper_type'];
+            $subjectId = null;
+            $chapterId = null;
+            $subjectName = $validated['subject_name'] ?? null;
+
+            if ($paperType === 'mocktest') {
+                $subjectName = $subjectName ?: array_key_first($preset['subjects']);
+                $subject = Subject::firstOrCreate([
+                    'course_id' => $course->id,
+                    'name'      => $subjectName,
+                ]);
+                $subjectId = $subject->id;
+
+                if (!empty($validated['chapter_name'])) {
+                    $chapter = Chapter::firstOrCreate(
+                        ['subject_id' => $subject->id, 'name' => trim($validated['chapter_name'])],
+                        ['course_id' => $course->id]
+                    );
+                    $chapterId = $chapter->id;
+                }
+            }
+
+            $examYear = (int) ($validated['exam_year'] ?? date('Y'));
+            $baseTitle = trim((string) ($validated['title'] ?? ''));
+            if ($baseTitle === '') {
+                if ($validated['mode'] === 'pyq_ai') {
+                    $baseTitle = "{$preset['exam_name']} {$examYear} PYQ Paper";
+                } elseif ($paperType === 'mocktest') {
+                    $baseTitle = "{$preset['exam_name']} {$subjectName} Mock Test";
+                } else {
+                    $baseTitle = "{$preset['exam_name']} AI Exam-Level Mock Test";
+                }
+            }
+
+            $title = $this->makeUniqueTitle($baseTitle);
+            $batches = $this->aiService->buildGenerationPlan(
+                $examKey,
+                $paperType,
+                $subjectName,
+                (int) $validated['total_questions']
+            );
+
+            $description = $validated['mode'] === 'pyq_ai'
+                ? "AI-generated {$preset['exam_name']} {$examYear} previous-year style paper."
+                : "AI-generated {$preset['exam_name']} exam-level mock test ({$validated['difficulty']}).";
+
+            $paper = QuestionPaper::create([
+                'title'            => $title,
+                'description'      => $description,
+                'exam_name'        => $preset['exam_name'],
+                'course_id'        => $course->id,
+                'paper_type'       => $paperType,
+                'subject_id'       => $subjectId,
+                'chapter_id'       => $chapterId,
+                'subject_quotas'   => [],
+                'exam_year'        => $examYear,
+                'duration_minutes' => $preset['duration_minutes'],
+                'total_marks'      => 0,
+                'total_questions'  => 0,
+            ]);
+
+            return response()->json([
+                'success'   => true,
+                'paper_id'  => $paper->id,
+                'paper_url' => route('admin.question-papers.show', $paper->id, false),
+                'batch_url' => route('admin.question-papers.ai.batch', ['questionPaper' => $paper->id], false),
+                'title'     => $paper->title,
+                'provider'  => $provider,
+                'batches'   => $batches,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('AI Paper Init Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => "AI provider \"{$status['providers'][$provider]['label']}\" is not configured yet. Add {$envKey} to your .env file.",
+                'message' => 'Failed to initialize paper: ' . $e->getMessage(),
             ], 422);
         }
-
-        $examKey = $validated['exam_key'];
-        $preset = config("ai.exams.{$examKey}");
-        $course = $this->aiService->ensureExamStructure($examKey);
-
-        $paperType = $validated['paper_type'];
-        $subjectId = null;
-        $chapterId = null;
-        $subjectName = $validated['subject_name'] ?? null;
-
-        if ($paperType === 'mocktest') {
-            $subjectName = $subjectName ?: array_key_first($preset['subjects']);
-            $subject = Subject::firstOrCreate([
-                'course_id' => $course->id,
-                'name'      => $subjectName,
-            ]);
-            $subjectId = $subject->id;
-
-            if (!empty($validated['chapter_name'])) {
-                $chapter = Chapter::firstOrCreate(
-                    ['subject_id' => $subject->id, 'name' => trim($validated['chapter_name'])],
-                    ['course_id' => $course->id]
-                );
-                $chapterId = $chapter->id;
-            }
-        }
-
-        $examYear = (int) ($validated['exam_year'] ?? date('Y'));
-        $baseTitle = trim((string) ($validated['title'] ?? ''));
-        if ($baseTitle === '') {
-            if ($validated['mode'] === 'pyq_ai') {
-                $baseTitle = "{$preset['exam_name']} {$examYear} PYQ Paper";
-            } elseif ($paperType === 'mocktest') {
-                $baseTitle = "{$preset['exam_name']} {$subjectName} Mock Test";
-            } else {
-                $baseTitle = "{$preset['exam_name']} AI Exam-Level Mock Test";
-            }
-        }
-
-        $title = $this->makeUniqueTitle($baseTitle);
-        $batches = $this->aiService->buildGenerationPlan(
-            $examKey,
-            $paperType,
-            $subjectName,
-            (int) $validated['total_questions']
-        );
-
-        $description = $validated['mode'] === 'pyq_ai'
-            ? "AI-generated {$preset['exam_name']} {$examYear} previous-year style paper."
-            : "AI-generated {$preset['exam_name']} exam-level mock test ({$validated['difficulty']}).";
-
-        $paper = QuestionPaper::create([
-            'title'            => $title,
-            'description'      => $description,
-            'exam_name'        => $preset['exam_name'],
-            'course_id'        => $course->id,
-            'paper_type'       => $paperType,
-            'subject_id'       => $subjectId,
-            'chapter_id'       => $chapterId,
-            'subject_quotas'   => [],
-            'exam_year'        => $examYear,
-            'duration_minutes' => $preset['duration_minutes'],
-            'total_marks'      => 0,
-            'total_questions'  => 0,
-        ]);
-
-        return response()->json([
-            'success'   => true,
-            'paper_id'  => $paper->id,
-            'paper_url' => route('admin.question-papers.show', $paper->id, false),
-            'batch_url' => route('admin.question-papers.ai.batch', ['questionPaper' => $paper->id], false),
-            'title'     => $paper->title,
-            'provider'  => $provider,
-            'batches'   => $batches,
-        ]);
     }
 
     /**
