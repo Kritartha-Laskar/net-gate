@@ -1001,6 +1001,9 @@ async function startAiGeneration() {
             if (initRes.status === 401 || initRes.status === 403 || initText.includes('login')) {
                 throw new Error('Your session timed out. Please refresh the page and log in again.');
             }
+            if (initRes.status === 503) {
+                throw new Error('Server returned 503 (Service Temporarily Unavailable). Your Laravel app may be in maintenance mode (run "php artisan up" on the server) or the server process is temporarily busy. Please wait a moment and refresh.');
+            }
             throw new Error(`Server returned HTML error (${initRes.status}). Please refresh the page (F5) and try again.`);
         }
 

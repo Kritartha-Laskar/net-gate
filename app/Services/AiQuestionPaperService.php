@@ -68,6 +68,11 @@ class AiQuestionPaperService
             ['status' => 'active']
         );
 
+        // If subjects already exist for this course, structure is already prepared - skip heavy query loop
+        if (!$course->wasRecentlyCreated && $course->subjects()->exists()) {
+            return $course;
+        }
+
         foreach ($preset['subjects'] as $subjectName => $meta) {
             $subject = Subject::firstOrCreate(
                 ['course_id' => $course->id, 'name' => $subjectName]
